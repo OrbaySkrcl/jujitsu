@@ -17,6 +17,7 @@ const IMAGE_TYPES = new Set([
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.APP_ACCESS_KEY && process.env.ALLOW_PUBLIC_UPLOADS !== 'true') return NextResponse.json({ error: 'Uploads require a configured workspace access key' }, { status: 503 });
     if (!hasAccess(request)) return NextResponse.json({ error: 'Invalid access key' }, { status: 401 });
     const { filename, contentType, kind, size } = await request.json();
     if (kind !== 'video' && kind !== 'image')
