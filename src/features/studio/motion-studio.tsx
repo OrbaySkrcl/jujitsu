@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Quality = '480p' | '720p' | '1080p';
 type Status = 'queued' | 'processing' | 'succeeded' | 'failed';
+type Connection = 'disconnected' | 'checking' | 'connected' | 'failed';
 interface Asset { id: string; name: string; key: string; preview: string; progress: number; duration?: number }
 interface Job { id: string; createdAt: string; status: Status; quality: Quality; prompt: string; videoUrl?: string | null; error?: string | null; completionTokens?: number | null; costUsd?: number | null }
 interface Config { serverApiConfigured: boolean; accessRequired: boolean; model: string }
@@ -56,14 +57,19 @@ export default function MotionStudio() {
   const [uploading, setUploading] = useState(0); const [config, setConfig] = useState<Config | null>(null);
   const [accessKey, setAccessKey] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [connection, setConnection] = useState<Connection>('disconnected');
   const videoInput = useRef<HTMLInputElement>(null); const imageInput = useRef<HTMLInputElement>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     // Browser-only persisted state must hydrate after the server render.
-    // oxlint-disable-next-line react/set-state-in-effect
-    setJobs(savedJobs()); setAccessKey(sessionStorage.getItem('jujitsu-access-key') ?? '');
+    // oxlint-disable react/set-state-in-effect
+    const savedAccessKey = sessionStorage.getItem('jujitsu-access-key') ?? '';
+    const savedApiKey = sessionStorage.getItem('jujitsu-seedance-api-key') ?? '';
+    setJobs(savedJobs()); setAccessKey(savedAccessKey); setApiKey(savedApiKey);
+    if (savedApiKey) void verifyKey(savedApiKey, savedAccessKey);
     fetch('/api/config').then((response) => json<Config>(response)).then(setConfig).catch(() => setConfig(null));
+    // oxlint-enable react/set-state-in-effect
   }, []);
   useEffect(() => localStorage.setItem('jujitsu-jobs', JSON.stringify(jobs.slice(0, 40))), [jobs]);
   const updateJob = useCallback((id: string, update: Partial<Job>) => setJobs((all) => all.map((job) => job.id === id ? { ...job, ...update } : job)), []);
@@ -90,6 +96,23 @@ export default function MotionStudio() {
       const caret = start + spacer.length + reference.length + 1;
       input?.focus(); input?.setSelectionRange(caret, caret);
     });
+  }
+
+  async function verifyKey(key = apiKey, workspaceKey = accessKey) {
+    if (!key.trim()) { setConnection('failed'); setError('Enter your Seedance API key.'); return; }
+    setConnection('checking'); setError(null);
+    try {
+      await json<{ connected: true }>(await fetch('/api/config/verify', {
+        method: 'POST',
+        headers: { ...generationAuth(workspaceKey, key.trim()) }
+      }));
+      sessionStorage.setItem('jujitsu-seedance-api-key', key.trim());
+      setApiKey(key.trim()); setConnection('connected');
+    } catch (cause) {
+      sessionStorage.removeItem('jujitsu-seedance-api-key');
+      setConnection('failed');
+      setError(cause instanceof Error ? cause.message : 'Connection verification failed');
+    }
   }
 
   async function addVideo(file?: File) {
@@ -119,7 +142,7 @@ export default function MotionStudio() {
   }
   async function generate() {
     setError(null);
-    if (!config?.serverApiConfigured && !apiKey) return setError('Enter your Seedance API key.');
+    if (!config?.serverApiConfigured && connection !== 'connected') return setError('Save and verify your Seedance API key first.');
     if (config?.accessRequired && !accessKey) return setError('Enter the workspace access key.');
     if (!video?.key || !images.length || images.some((image) => !image.key)) return setError('Upload one video and at least one image.');
     if (!video.duration || video.duration < 4 || video.duration > 30) return setError('Video must be 4–30 seconds.');
@@ -138,7 +161,7 @@ export default function MotionStudio() {
     return video.duration * 2 * pixels * 24 / 1024 / 1_000_000 * (quality === '1080p' ? 7 : 6.4) * batch;
   }, [batch, quality, video?.duration]);
   const result = jobs.find((job) => job.status === 'succeeded' && job.videoUrl);
-  const ready = Boolean((config?.serverApiConfigured || apiKey) && (!config?.accessRequired || accessKey) && video?.key && video.duration && video.duration >= 4 && video.duration <= 30 && images.length && images.every((image) => image.key) && !uploading);
+  const ready = Boolean((config?.serverApiConfigured || connection === 'connected') && (!config?.accessRequired || accessKey) && video?.key && video.duration && video.duration >= 4 && video.duration <= 30 && images.length && images.every((image) => image.key) && !uploading);
 
   return <main className='min-h-screen bg-background text-foreground'>
     <header className='sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl'><div className='mx-auto flex h-16 max-w-[1600px] items-center justify-between px-5 lg:px-8'>
@@ -154,8 +177,8 @@ export default function MotionStudio() {
           <label className='block space-y-2 text-xs text-muted-foreground'>Prompt <span className='float-right font-mono text-[9px] uppercase'>Use @ references</span><div className='flex flex-wrap gap-1'>{video && <button type='button' onClick={() => insertReference('@Video 1')} className='border border-border bg-secondary px-2 py-1 font-mono text-[9px] text-foreground'>@Video 1</button>}{images.map((image, index) => <button type='button' key={image.id} onClick={() => insertReference(`@Image ${index + 1}`)} className='border border-border bg-secondary px-2 py-1 font-mono text-[9px] text-foreground'>@Image {index + 1}</button>)}</div><textarea ref={promptInput} value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={10000} placeholder='Replace the performer in @Video 1 with @Image 1. Use @Image 2 for the outfit…' className='min-h-28 w-full resize-none border border-border bg-input p-3 text-sm text-foreground' /></label>
           <div className='grid grid-cols-2 gap-3'><label className='space-y-2 text-xs text-muted-foreground'>Resolution<select value={quality} onChange={(event) => setQuality(event.target.value as Quality)} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground'><option value='480p'>480p · $6.40 / 1M</option><option value='720p'>720p · $6.40 / 1M</option><option value='1080p'>1080p · $7.00 / 1M</option></select></label><label className='space-y-2 text-xs text-muted-foreground'>Outputs<select value={batch} onChange={(event) => setBatch(Number(event.target.value))} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground'>{[1,2,3,4].map((value) => <option key={value}>{value}</option>)}</select></label></div>
           {config?.accessRequired && <label className='block space-y-2 text-xs text-muted-foreground'>Workspace access key<input type='password' value={accessKey} onChange={(event) => { setAccessKey(event.target.value); sessionStorage.setItem('jujitsu-access-key', event.target.value); }} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground' /></label>}
-          <label className='block space-y-2 text-xs text-muted-foreground'>Seedance API key <span className='float-right font-mono text-[9px] uppercase'>{config?.serverApiConfigured ? 'Optional · server connected' : 'Required'}</span><input type='password' value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder='Paste your BytePlus ModelArk API key' autoComplete='off' className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground' /><span className='block text-[10px] leading-4'>Kept only in this tab’s memory and sent over HTTPS for generation and status checks.</span></label>
-          <div className='grid grid-cols-2 gap-px border border-border bg-border font-mono text-[9px] uppercase tracking-[.1em]'><div className='bg-background p-3'><p className='text-muted-foreground'>API</p><p className='mt-1'>{apiKey ? 'User key ready' : config?.serverApiConfigured ? 'Server connected' : 'Enter key'}</p></div><div className='bg-background p-3'><p className='text-muted-foreground'>List-rate estimate</p><p className='mt-1'>{estimate ? `~$${estimate.toFixed(2)}` : 'Needs video'}</p></div></div><p className='text-[11px] leading-5 text-muted-foreground'>Estimate assumes matching output duration at 24 fps. Completed jobs show token usage × official list rate. The generation API does not expose account balance.</p>
+          <div className='space-y-2'><label className='block text-xs text-muted-foreground'>Seedance API key <span className='float-right font-mono text-[9px] uppercase'>{config?.serverApiConfigured ? 'Optional · server connected' : 'Required'}</span></label><div className='flex gap-2'><input type='password' value={apiKey} onChange={(event) => { setApiKey(event.target.value); setConnection('disconnected'); }} placeholder='Paste your BytePlus ModelArk API key' autoComplete='off' className='h-11 min-w-0 flex-1 border border-border bg-input px-3 text-sm text-foreground' /><button type='button' onClick={() => void verifyKey()} disabled={!apiKey || connection === 'checking'} className='h-11 shrink-0 border border-border bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-30'>{connection === 'checking' ? 'Checking…' : 'Save & verify'}</button></div><p className='text-[10px] leading-4 text-muted-foreground'>Saved only for this browser tab after BytePlus verifies it.</p></div>
+          <div className='grid grid-cols-2 gap-px border border-border bg-border font-mono text-[9px] uppercase tracking-[.1em]'><div className='bg-background p-3'><p className='text-muted-foreground'>Connection</p><p className={`mt-1 flex items-center gap-1.5 ${connection === 'connected' || (!apiKey && config?.serverApiConfigured) ? 'text-emerald-300' : connection === 'failed' ? 'text-red-300' : ''}`}>{connection === 'checking' ? <Icons.spinner className='animate-spin' size={13} /> : connection === 'connected' || (!apiKey && config?.serverApiConfigured) ? <Icons.connected size={13} /> : <Icons.disconnected size={13} />}{connection === 'checking' ? 'Checking' : connection === 'connected' ? 'Connected' : !apiKey && config?.serverApiConfigured ? 'Server connected' : connection === 'failed' ? 'Connection failed' : 'Not connected'}</p></div><div className='bg-background p-3'><p className='text-muted-foreground'>List-rate estimate</p><p className='mt-1'>{estimate ? `~$${estimate.toFixed(2)}` : 'Needs video'}</p></div></div><p className='text-[11px] leading-5 text-muted-foreground'>Estimate assumes matching output duration at 24 fps. Completed jobs show token usage × official list rate. The generation API does not expose account balance.</p>
           {error && <div role='alert' className='flex gap-2 border border-destructive/40 bg-destructive/10 p-3 text-xs text-red-200'><Icons.warning size={15} />{error}</div>}
           <button disabled={!ready} onClick={() => void generate()} className='flex h-13 w-full items-center justify-center gap-2 bg-primary text-sm font-medium text-primary-foreground disabled:opacity-25'>{uploading ? <Icons.spinner className='animate-spin' size={17} /> : <Icons.sparkles size={17} />}{uploading ? `Uploading ${uploading}` : `Generate${estimate ? ` · ~$${estimate.toFixed(2)}` : ''}`}</button>
         </div></section>

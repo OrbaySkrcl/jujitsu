@@ -75,6 +75,16 @@ export async function getSeedanceTask(id: string, apiKey?: string) {
   return data;
 }
 
+export async function verifySeedanceApiKey(apiKey: string): Promise<boolean> {
+  const response = await fetch(`${SEEDANCE_ENDPOINT}/jujitsu-connection-check`, {
+    headers: { Authorization: `Bearer ${requiredApiKey(apiKey)}` },
+    cache: 'no-store'
+  });
+  if (response.status === 401 || response.status === 403) return false;
+  if (response.status >= 500) throw new Error('Seedance is temporarily unavailable');
+  return true;
+}
+
 export function normalizeSeedanceTask(data: Record<string, unknown>) {
   const nested = typeof data.data === 'object' && data.data ? data.data as Record<string, unknown> : {};
   const content = typeof data.content === 'object' && data.content ? data.content as Record<string, unknown> : {};

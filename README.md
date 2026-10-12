@@ -28,7 +28,7 @@ AWS_DEFAULT_REGION=
 AWS_S3_URL_STYLE=
 ```
 
-Users can paste their own BytePlus ModelArk key into the **Seedance API key** field. It remains in React memory for that tab and is sent only to the generation/status endpoints over HTTPS. It is never saved to browser storage.
+Users paste their BytePlus ModelArk key into **Seedance API key**, then select **Save & verify**. JUJITSU performs a non-billable authentication check and displays Connected or Connection failed. A verified key is stored only in tab-scoped session storage and sent to verification, generation, and status endpoints over HTTPS; it is cleared when that browser tab closes.
 
 Alternatively, a deployer can set `ARK_API_KEY` server-side for a shared account. Set `APP_ACCESS_KEY` on shared public deployments so strangers cannot spend the server API or storage balance. Configure bucket CORS to allow `PUT` from the deployed origin with `Content-Type`.
 
