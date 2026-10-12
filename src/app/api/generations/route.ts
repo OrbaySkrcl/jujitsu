@@ -2,10 +2,15 @@ import { createSeedanceTask, normalizeSeedanceTask } from '@/lib/seedance';
 import { createReadUrl } from '@/lib/storage';
 import { NextResponse } from 'next/server';
 import { hasAccess } from '@/lib/access';
+import { takeQuota } from '@/lib/limits';
+
+const isInputKey = (value: unknown) => typeof value === 'string' && /^inputs\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\.[a-z0-9]{1,8}$/.test(value);
 
 export async function POST(request: Request) {
   try {
     if (!hasAccess(request)) return NextResponse.json({ error: 'Invalid access key' }, { status: 401 });
+    if (!process.env.APP_ACCESS_KEY && process.env.ARK_API_KEY && !request.headers.get('x-seedance-api-key')) return NextResponse.json({ error: 'Paid server API usage requires workspace protection' }, { status: 403 });
+    if (!takeQuota(request, 'generations', 12)) return NextResponse.json({ error: 'Hourly generation quota exceeded' }, { status: 429 });
     const apiKey = request.headers.get('x-seedance-api-key')?.trim() || process.env.ARK_API_KEY;
     if (!apiKey || apiKey.length > 512 || !/^[\x21-\x7e]+$/.test(apiKey)) return NextResponse.json({ error: 'Enter a valid Seedance API key' }, { status: 401 });
     const input = await request.json();
@@ -19,7 +24,7 @@ export async function POST(request: Request) {
     ) {
       throw new Error('One source video and 1–30 reference images are required');
     }
-    if (!String(input.videoKey).startsWith('inputs/') || input.imageKeys.some((key: unknown) => !String(key).startsWith('inputs/')))
+    if (!isInputKey(input.videoKey) || input.imageKeys.some((key: unknown) => !isInputKey(key)))
       throw new Error('Invalid upload key');
     const prompt = String(input.prompt ?? '').slice(0, 10000);
     const videoMentions = [...prompt.matchAll(/@video\s*(\d+)/gi)].map((match) => Number(match[1]));
