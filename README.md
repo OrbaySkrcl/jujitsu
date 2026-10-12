@@ -42,6 +42,14 @@ JUJITSU is a real user interface for the Seedance 2.5 video-edit endpoint (`drea
 
 Only upload videos and likenesses you have permission to use. Respect copyright, privacy, and applicable consent requirements.
 
+## Deployment checklist
+
+1. Set `APP_ACCESS_KEY` in Railway before inviting public traffic, and do not publish this key.
+2. Configure your object-storage bucket with CORS restricted to your exact site origin and configure automatic deletion of old `inputs/` objects (recommended 24 hours; longer if active tasks need them).
+3. Use a BYOK deployment whenever possible; avoid making a server-funded `ARK_API_KEY` available to strangers.
+4. Add distributed rate limits and storage usage/billing alerts at your reverse proxy or platform for any public instance. Built-in request quotas are per process and reset on deployment; they do not constitute full abuse protection.
+5. Validate a complete upload, character-replacement generation, polling, and download with your own BytePlus key before launch.
+
 ## Development
 
 ```bash
