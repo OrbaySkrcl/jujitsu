@@ -11,26 +11,31 @@ export interface GenerationInput {
   imageUrls: string[];
 }
 
-function requiredApiKey() {
-  const key = process.env.ARK_API_KEY;
+function requiredApiKey(apiKey?: string) {
+  const key = apiKey || process.env.ARK_API_KEY;
   if (!key) throw new Error('ARK_API_KEY is not configured');
   return key;
 }
 
-function buildPrompt(input: GenerationInput) {
-  const imageRefs = input.imageUrls.map((_, index) => `@Image ${index + 1}`).join(', ');
-  const instruction = `This is a video editing task. @Video 1 is the master clip; preserve its camera movement, pacing, duration, composition, shot order, cuts, expressions, actions, poses, timing, lighting, background, and original audio. ${imageRefs} define the same replacement character's face, hairstyle, body shape, clothing, and accessories; do not use the image backgrounds. Replace the main character in @Video 1 with the character defined by ${imageRefs}. The replacement inherits the original character's on-screen timing, position, pose, full motion path, hand motion, facial timing, occlusions, entrances, and exits. Keep every other subject and element unchanged. Do not change framing or add or remove anything else.`;
-
-  return [instruction, input.prompt ?? '']
-    .filter(Boolean)
-    .join(' ');
+function normalizeReferences(prompt: string) {
+  return prompt
+    .replace(/@video\s*(\d+)/gi, '@Video $1')
+    .replace(/@image\s*(\d+)/gi, '@Image $1');
 }
 
-export async function createSeedanceTask(input: GenerationInput) {
+function buildPrompt(input: GenerationInput) {
+  const prompt = normalizeReferences(input.prompt ?? '').trim();
+  if (!prompt) {
+    return 'This is a video editing task. Edit @Video 1. Replace the main character in @Video 1 with the character in @Image 1. Preserve the source camera movement, timing, composition, actions, poses, motion path, occlusions, background, and original audio.';
+  }
+  return `This is a video editing task. Edit @Video 1. ${prompt} Preserve the source timing, camera movement, composition, motion continuity, and original audio unless the prompt explicitly requests otherwise.`;
+}
+
+export async function createSeedanceTask(input: GenerationInput, apiKey?: string) {
   const response = await fetch(SEEDANCE_ENDPOINT, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${requiredApiKey()}`,
+      Authorization: `Bearer ${requiredApiKey(apiKey)}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -59,9 +64,9 @@ export async function createSeedanceTask(input: GenerationInput) {
   return data;
 }
 
-export async function getSeedanceTask(id: string) {
+export async function getSeedanceTask(id: string, apiKey?: string) {
   const response = await fetch(`${SEEDANCE_ENDPOINT}/${encodeURIComponent(id)}`, {
-    headers: { Authorization: `Bearer ${requiredApiKey()}` },
+    headers: { Authorization: `Bearer ${requiredApiKey(apiKey)}` },
     cache: 'no-store'
   });
   const data = await response.json();

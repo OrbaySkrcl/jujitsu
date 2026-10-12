@@ -1,4 +1,4 @@
-# Jujistsu
+# Jujitsu
 
 A single-page character-replacement workflow using the official BytePlus ModelArk Seedance 2.5 video-edit API.
 

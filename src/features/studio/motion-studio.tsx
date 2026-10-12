@@ -8,9 +8,13 @@ type Quality = '480p' | '720p' | '1080p';
 type Status = 'queued' | 'processing' | 'succeeded' | 'failed';
 interface Asset { id: string; name: string; key: string; preview: string; progress: number; duration?: number }
 interface Job { id: string; createdAt: string; status: Status; quality: Quality; prompt: string; videoUrl?: string | null; error?: string | null; completionTokens?: number | null; costUsd?: number | null }
-interface Config { apiConfigured: boolean; accessRequired: boolean; model: string }
+interface Config { serverApiConfigured: boolean; accessRequired: boolean; model: string }
 
 const auth = (key: string): HeadersInit => (key ? { 'x-access-key': key } : {});
+const generationAuth = (accessKey: string, apiKey: string): HeadersInit => ({
+  ...auth(accessKey),
+  ...(apiKey ? { 'x-seedance-api-key': apiKey } : {})
+});
 async function json<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
   if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
@@ -18,10 +22,10 @@ async function json<T>(response: Response): Promise<T> {
 }
 function savedJobs(): Job[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem('jujistsu-jobs') ?? '[]');
+    const value: unknown = JSON.parse(localStorage.getItem('jujitsu-jobs') ?? '[]');
     return Array.isArray(value) ? value.filter((item): item is Job => Boolean(item?.id)) : [];
   } catch {
-    localStorage.removeItem('jujistsu-jobs');
+    localStorage.removeItem('jujitsu-jobs');
     return [];
   }
 }
@@ -51,27 +55,42 @@ export default function MotionStudio() {
   const [history, setHistory] = useState(false); const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0); const [config, setConfig] = useState<Config | null>(null);
   const [accessKey, setAccessKey] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const videoInput = useRef<HTMLInputElement>(null); const imageInput = useRef<HTMLInputElement>(null);
+  const promptInput = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     // Browser-only persisted state must hydrate after the server render.
     // oxlint-disable-next-line react/set-state-in-effect
-    setJobs(savedJobs()); setAccessKey(sessionStorage.getItem('jujistsu-access-key') ?? '');
+    setJobs(savedJobs()); setAccessKey(sessionStorage.getItem('jujitsu-access-key') ?? '');
     fetch('/api/config').then((response) => json<Config>(response)).then(setConfig).catch(() => setConfig(null));
   }, []);
-  useEffect(() => localStorage.setItem('jujistsu-jobs', JSON.stringify(jobs.slice(0, 40))), [jobs]);
+  useEffect(() => localStorage.setItem('jujitsu-jobs', JSON.stringify(jobs.slice(0, 40))), [jobs]);
   const updateJob = useCallback((id: string, update: Partial<Job>) => setJobs((all) => all.map((job) => job.id === id ? { ...job, ...update } : job)), []);
   useEffect(() => {
     const active = jobs.filter((job) => job.status === 'queued' || job.status === 'processing');
     if (!active.length) return;
     const timer = window.setInterval(() => void Promise.all(active.map(async (job) => {
       try {
-        const data = await json<{ status: string; videoUrl?: string; error?: string; completionTokens?: number; costUsd?: number }>(await fetch(`/api/generations/${job.id}`, { headers: auth(accessKey) }));
+        const data = await json<{ status: string; videoUrl?: string; error?: string; completionTokens?: number; costUsd?: number }>(await fetch(`/api/generations/${job.id}`, { headers: generationAuth(accessKey, apiKey) }));
         updateJob(job.id, { ...data, status: data.status === 'succeeded' ? 'succeeded' : data.status === 'failed' || data.status === 'expired' ? 'failed' : 'processing' });
       } catch (cause) { updateJob(job.id, { error: cause instanceof Error ? cause.message : 'Status check failed' }); }
     })), 5000);
     return () => window.clearInterval(timer);
-  }, [accessKey, jobs, updateJob]);
+  }, [accessKey, apiKey, jobs, updateJob]);
+
+  function insertReference(reference: string) {
+    const input = promptInput.current;
+    const start = input?.selectionStart ?? prompt.length;
+    const end = input?.selectionEnd ?? start;
+    const spacer = start > 0 && !/\s/.test(prompt[start - 1] ?? '') ? ' ' : '';
+    const next = `${prompt.slice(0, start)}${spacer}${reference} ${prompt.slice(end)}`;
+    setPrompt(next);
+    requestAnimationFrame(() => {
+      const caret = start + spacer.length + reference.length + 1;
+      input?.focus(); input?.setSelectionRange(caret, caret);
+    });
+  }
 
   async function addVideo(file?: File) {
     if (!file) return; setError(null);
@@ -100,13 +119,13 @@ export default function MotionStudio() {
   }
   async function generate() {
     setError(null);
-    if (!config?.apiConfigured) return setError('Seedance is not connected. Set ARK_API_KEY on the server.');
-    if (config.accessRequired && !accessKey) return setError('Enter the workspace access key.');
+    if (!config?.serverApiConfigured && !apiKey) return setError('Enter your Seedance API key.');
+    if (config?.accessRequired && !accessKey) return setError('Enter the workspace access key.');
     if (!video?.key || !images.length || images.some((image) => !image.key)) return setError('Upload one video and at least one image.');
     if (!video.duration || video.duration < 4 || video.duration > 30) return setError('Video must be 4–30 seconds.');
     try {
       const data = await json<{ tasks: Array<{ id: string; status: string }> }>(await fetch('/api/generations', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(accessKey) },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...generationAuth(accessKey, apiKey) },
         body: JSON.stringify({ prompt, resolution: quality, batch, videoKey: video.key, imageKeys: images.map((image) => image.key) })
       }));
       setJobs((all) => [...data.tasks.map<Job>((task) => ({ id: task.id, createdAt: new Date().toISOString(), status: task.status === 'succeeded' ? 'succeeded' : 'queued', quality, prompt })), ...all]);
@@ -119,23 +138,24 @@ export default function MotionStudio() {
     return video.duration * 2 * pixels * 24 / 1024 / 1_000_000 * (quality === '1080p' ? 7 : 6.4) * batch;
   }, [batch, quality, video?.duration]);
   const result = jobs.find((job) => job.status === 'succeeded' && job.videoUrl);
-  const ready = Boolean(config?.apiConfigured && (!config.accessRequired || accessKey) && video?.key && video.duration && video.duration >= 4 && video.duration <= 30 && images.length && images.every((image) => image.key) && !uploading);
+  const ready = Boolean((config?.serverApiConfigured || apiKey) && (!config?.accessRequired || accessKey) && video?.key && video.duration && video.duration >= 4 && video.duration <= 30 && images.length && images.every((image) => image.key) && !uploading);
 
   return <main className='min-h-screen bg-background text-foreground'>
     <header className='sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl'><div className='mx-auto flex h-16 max-w-[1600px] items-center justify-between px-5 lg:px-8'>
-      <button onClick={() => setHistory(false)} className='font-mono text-sm tracking-[.24em]'>JUJISTSU</button>
+      <button onClick={() => setHistory(false)} className='font-mono text-sm tracking-[.24em]'>JUJITSU</button>
       <div className='flex items-center gap-3'><span className='hidden font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground sm:block'>Seedance 2.5</span><button onClick={() => setHistory(!history)} className='border border-border bg-secondary px-3 py-2 text-xs hover:bg-accent'>{history ? 'New transfer' : `Jobs${jobs.length ? ` (${jobs.length})` : ''}`}</button></div>
     </div></header>
     {history ? <History jobs={jobs} setJobs={setJobs} /> : <div className='mx-auto grid max-w-[1600px] gap-px bg-border p-px lg:grid-cols-[460px_minmax(0,1fr)]'>
       <section className='bg-card p-5 sm:p-7'><p className='font-mono text-[10px] uppercase tracking-[.22em] text-muted-foreground'>Motion transfer</p><h1 className='mt-3 font-display text-4xl leading-none sm:text-5xl'>Replace the character.<br />Keep the performance.</h1><p className='mt-4 text-sm leading-6 text-muted-foreground'>Upload a 4–30 second source and up to 30 identity references. The files go to the official Seedance 2.5 motion-edit API.</p>
         <div className='mt-8 space-y-7 border-t border-border pt-7'>
           <Label step='01' title='Motion source' note='MP4 / MOV · 200 MB' /><input ref={videoInput} hidden type='file' accept='video/mp4,video/quicktime' onChange={(event) => void addVideo(event.target.files?.[0])} />
-          {video ? <div className='relative overflow-hidden border border-border bg-background'>{/* oxlint-disable-next-line jsx-a11y/media-has-caption */}<video src={video.preview} className='h-48 w-full object-cover opacity-80' muted playsInline onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setVideo((item) => item ? { ...item, duration } : item); }} /><div className='absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-black p-4 pt-16 text-white'><div className='min-w-0'><p className='truncate text-xs'>{video.name}</p><p className='mt-1 font-mono text-[9px] text-white/60'>{video.progress < 100 ? `${video.progress}%` : video.duration ? `${video.duration.toFixed(1)}s · ready` : 'reading'}</p></div><button aria-label='Remove video' onClick={() => setVideo(null)}><Icons.trash size={16} /></button></div></div> : <Drop title='Choose a motion video' hint='Timing, camera and performance to preserve' click={() => videoInput.current?.click()} drop={(files) => void addVideo(files[0])} />}
-          <Label step='02' title='Character references' note={`${images.length}/30`} /><input ref={imageInput} hidden multiple type='file' accept='image/*,.heic,.heif' onChange={(event) => void addImages(event.target.files)} /><div className='grid grid-cols-4 gap-2'>{images.map((image, index) => <div key={image.id} className='group relative aspect-square overflow-hidden border border-border'>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={image.preview} alt={`Reference ${index + 1}`} className='h-full w-full object-cover' /><button aria-label={`Remove ${image.name}`} onClick={() => setImages((all) => all.filter((item) => item.id !== image.id))} className='absolute right-1 top-1 bg-black/75 p-1 text-white opacity-0 group-hover:opacity-100 focus:opacity-100'><Icons.close size={13} /></button></div>)}{images.length < 30 && <button aria-label='Add images' onClick={() => imageInput.current?.click()} className='grid aspect-square place-items-center border border-dashed border-border bg-secondary text-muted-foreground'><Icons.add size={20} /></button>}</div>
-          <label className='block space-y-2 text-xs text-muted-foreground'>Direction <span className='float-right font-mono text-[9px] uppercase'>Optional</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={10000} placeholder='Clothing, scene, lighting, or details to preserve…' className='min-h-24 w-full resize-none border border-border bg-input p-3 text-sm text-foreground' /></label>
+          {video ? <div className='relative overflow-hidden border border-border bg-background'>{/* oxlint-disable-next-line jsx-a11y/media-has-caption */}<video src={video.preview} className='h-48 w-full object-cover opacity-80' muted playsInline onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setVideo((item) => item ? { ...item, duration } : item); }} /><button onClick={() => insertReference('@Video 1')} className='absolute left-2 top-2 bg-black/80 px-2 py-1 font-mono text-[9px] text-white'>@Video 1</button><div className='absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-black p-4 pt-16 text-white'><div className='min-w-0'><p className='truncate text-xs'>{video.name}</p><p className='mt-1 font-mono text-[9px] text-white/60'>{video.progress < 100 ? `${video.progress}%` : video.duration ? `${video.duration.toFixed(1)}s · ready` : 'reading'}</p></div><button aria-label='Remove video' onClick={() => setVideo(null)}><Icons.trash size={16} /></button></div></div> : <Drop title='Choose a motion video' hint='Timing, camera and performance to preserve' click={() => videoInput.current?.click()} drop={(files) => void addVideo(files[0])} />}
+          <Label step='02' title='Visual references' note={`${images.length}/30`} /><input ref={imageInput} hidden multiple type='file' accept='image/*,.heic,.heif' onChange={(event) => void addImages(event.target.files)} /><div className='grid grid-cols-4 gap-2'>{images.map((image, index) => <div key={image.id} className='group relative aspect-square overflow-hidden border border-border'>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={image.preview} alt={`Reference ${index + 1}`} className='h-full w-full object-cover' /><button onClick={() => insertReference(`@Image ${index + 1}`)} className='absolute bottom-1 left-1 bg-black/80 px-1.5 py-1 font-mono text-[8px] text-white'>@Image {index + 1}</button><button aria-label={`Remove ${image.name}`} onClick={() => setImages((all) => all.filter((item) => item.id !== image.id))} className='absolute right-1 top-1 bg-black/75 p-1 text-white opacity-0 group-hover:opacity-100 focus:opacity-100'><Icons.close size={13} /></button></div>)}{images.length < 30 && <button aria-label='Add images' onClick={() => imageInput.current?.click()} className='grid aspect-square place-items-center border border-dashed border-border bg-secondary text-muted-foreground'><Icons.add size={20} /></button>}</div>
+          <label className='block space-y-2 text-xs text-muted-foreground'>Prompt <span className='float-right font-mono text-[9px] uppercase'>Use @ references</span><div className='flex flex-wrap gap-1'>{video && <button type='button' onClick={() => insertReference('@Video 1')} className='border border-border bg-secondary px-2 py-1 font-mono text-[9px] text-foreground'>@Video 1</button>}{images.map((image, index) => <button type='button' key={image.id} onClick={() => insertReference(`@Image ${index + 1}`)} className='border border-border bg-secondary px-2 py-1 font-mono text-[9px] text-foreground'>@Image {index + 1}</button>)}</div><textarea ref={promptInput} value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={10000} placeholder='Replace the performer in @Video 1 with @Image 1. Use @Image 2 for the outfit…' className='min-h-28 w-full resize-none border border-border bg-input p-3 text-sm text-foreground' /></label>
           <div className='grid grid-cols-2 gap-3'><label className='space-y-2 text-xs text-muted-foreground'>Resolution<select value={quality} onChange={(event) => setQuality(event.target.value as Quality)} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground'><option value='480p'>480p · $6.40 / 1M</option><option value='720p'>720p · $6.40 / 1M</option><option value='1080p'>1080p · $7.00 / 1M</option></select></label><label className='space-y-2 text-xs text-muted-foreground'>Outputs<select value={batch} onChange={(event) => setBatch(Number(event.target.value))} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground'>{[1,2,3,4].map((value) => <option key={value}>{value}</option>)}</select></label></div>
-          {config?.accessRequired && <label className='block space-y-2 text-xs text-muted-foreground'>Workspace access key<input type='password' value={accessKey} onChange={(event) => { setAccessKey(event.target.value); sessionStorage.setItem('jujistsu-access-key', event.target.value); }} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground' /></label>}
-          <div className='grid grid-cols-2 gap-px border border-border bg-border font-mono text-[9px] uppercase tracking-[.1em]'><div className='bg-background p-3'><p className='text-muted-foreground'>API</p><p className='mt-1'>{config?.apiConfigured ? 'Connected' : 'Not configured'}</p></div><div className='bg-background p-3'><p className='text-muted-foreground'>List-rate estimate</p><p className='mt-1'>{estimate ? `~$${estimate.toFixed(2)}` : 'Needs video'}</p></div></div><p className='text-[11px] leading-5 text-muted-foreground'>Estimate assumes matching output duration at 24 fps. Completed jobs show token usage × official list rate. The generation API does not expose account balance.</p>
+          {config?.accessRequired && <label className='block space-y-2 text-xs text-muted-foreground'>Workspace access key<input type='password' value={accessKey} onChange={(event) => { setAccessKey(event.target.value); sessionStorage.setItem('jujitsu-access-key', event.target.value); }} className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground' /></label>}
+          <label className='block space-y-2 text-xs text-muted-foreground'>Seedance API key <span className='float-right font-mono text-[9px] uppercase'>{config?.serverApiConfigured ? 'Optional · server connected' : 'Required'}</span><input type='password' value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder='Paste your BytePlus ModelArk API key' autoComplete='off' className='h-11 w-full border border-border bg-input px-3 text-sm text-foreground' /><span className='block text-[10px] leading-4'>Kept only in this tab’s memory and sent over HTTPS for generation and status checks.</span></label>
+          <div className='grid grid-cols-2 gap-px border border-border bg-border font-mono text-[9px] uppercase tracking-[.1em]'><div className='bg-background p-3'><p className='text-muted-foreground'>API</p><p className='mt-1'>{apiKey ? 'User key ready' : config?.serverApiConfigured ? 'Server connected' : 'Enter key'}</p></div><div className='bg-background p-3'><p className='text-muted-foreground'>List-rate estimate</p><p className='mt-1'>{estimate ? `~$${estimate.toFixed(2)}` : 'Needs video'}</p></div></div><p className='text-[11px] leading-5 text-muted-foreground'>Estimate assumes matching output duration at 24 fps. Completed jobs show token usage × official list rate. The generation API does not expose account balance.</p>
           {error && <div role='alert' className='flex gap-2 border border-destructive/40 bg-destructive/10 p-3 text-xs text-red-200'><Icons.warning size={15} />{error}</div>}
           <button disabled={!ready} onClick={() => void generate()} className='flex h-13 w-full items-center justify-center gap-2 bg-primary text-sm font-medium text-primary-foreground disabled:opacity-25'>{uploading ? <Icons.spinner className='animate-spin' size={17} /> : <Icons.sparkles size={17} />}{uploading ? `Uploading ${uploading}` : `Generate${estimate ? ` · ~$${estimate.toFixed(2)}` : ''}`}</button>
         </div></section>

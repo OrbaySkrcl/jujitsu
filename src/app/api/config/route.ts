@@ -4,8 +4,8 @@ import { NextResponse } from 'next/server';
 
 export function GET() {
   return NextResponse.json({
-    apiConfigured: Boolean(process.env.ARK_API_KEY),
+    serverApiConfigured: Boolean(process.env.ARK_API_KEY),
     accessRequired: accessRequired(),
     model: SEEDANCE_MODEL
-  });
+  }, { headers: { 'Cache-Control': 'no-store' } });
 }
