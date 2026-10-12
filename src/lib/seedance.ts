@@ -82,7 +82,8 @@ export async function verifySeedanceApiKey(apiKey: string): Promise<boolean> {
   });
   if (response.status === 401 || response.status === 403) return false;
   if (response.status >= 500) throw new Error('Seedance is temporarily unavailable');
-  return true;
+  // The deliberately nonexistent task should return 404 only after authentication.
+  return response.status === 404;
 }
 
 export function normalizeSeedanceTask(data: Record<string, unknown>) {
