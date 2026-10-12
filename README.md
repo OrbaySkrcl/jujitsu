@@ -1,42 +1,55 @@
-# Jujitsu
+# JUJITSU
 
-A single-page character-replacement workflow using the official BytePlus ModelArk Seedance 2.5 video-edit API.
+**Free, open-source AI character replacement studio.** Replace the character in an existing video using reference images while preserving the original performance. Built by [@pedroshakoor](https://github.com/Pedroshakoor).
 
-## Real workflow
+[Try the hosted studio](https://jujistsu.up.railway.app/) · [Source code](https://github.com/Pedroshakoor/jujistsu)
 
-- Direct MP4/MOV and reference-image uploads to S3-compatible storage
-- Official `dreamina-seedance-2-5-260628` edit task creation and polling
-- 480p, 720p, 1080p and 1–4 independent outputs
-- Browser-local history with real task IDs, output URLs, tokens, and list-rate estimates
-- Optional workspace access key protecting paid API usage
-- Bring-your-own Seedance API key input for public/self-hosted users
+> JUJITSU is free software. The BytePlus ModelArk API and object storage may charge for usage. JUJITSU is an independent interface, not an official BytePlus product.
 
-There are no example jobs, fake balance, preset library, object swap, or simulated outputs. ModelArk does not expose account balance through the generation API.
+## Features
 
-## Configure
+- MP4/MOV source clips (4–30 seconds) and up to 30 reference images
+- Real Seedance 2.5 edit tasks via the BytePlus ModelArk API
+- 480p, 720p, 1080p; up to four independently generated outputs
+- Optional instructions using `@Video 1` and `@Image 1` references
+- Browser-local job history, statuses, output previews, and estimated token costs
+- Bring your own BytePlus API key or configure a server-side API key
+- S3-compatible direct uploads; Next.js Docker/Railway deployment
 
-Copy `env.example.txt` to `.env.local`:
+## Quick start
 
-```env
-ARK_API_KEY=your_byteplus_modelark_api_key
-APP_ACCESS_KEY=choose_a_shared_workspace_password
-AWS_ENDPOINT_URL=
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_S3_BUCKET_NAME=
-AWS_DEFAULT_REGION=
-AWS_S3_URL_STYLE=
-```
-
-Users paste their BytePlus ModelArk key into **Seedance API key**, then select **Save & verify**. JUJITSU performs a non-billable authentication check and displays Connected or Connection failed. A verified key is stored only in tab-scoped session storage and sent to verification, generation, and status endpoints over HTTPS; it is cleared when that browser tab closes.
-
-Alternatively, a deployer can set `ARK_API_KEY` server-side for a shared account. Set `APP_ACCESS_KEY` on shared public deployments so strangers cannot spend the server API or storage balance. Configure bucket CORS to allow `PUT` from the deployed origin with `Content-Type`.
-
-## Run
+Requires Node.js, a BytePlus ModelArk key, and an S3-compatible object storage bucket.
 
 ```bash
-npm install
+git clone https://github.com/Pedroshakoor/jujistsu.git
+cd jujistsu
+cp env.example.txt .env.local
+npm ci
 npm run dev
 ```
 
-The Dockerfile uses Next.js standalone output and is ready for Railway.
+Set your S3 bucket connection variables in `.env.local` and configure bucket CORS for `PUT` from your deployed site origin with the `Content-Type` header. Open http://localhost:3000. Enter your BytePlus ModelArk API key in the studio and use **Save & verify**.
+
+For private workspaces, set `APP_ACCESS_KEY` to a strong password. Uploaded footage and reference images are stored in the configured bucket, and presigned URLs temporarily grant access to those objects. Apply bucket lifecycle policies to delete old inputs.
+
+**Security and cost warning:** By default, anonymous upload signing is disabled unless `APP_ACCESS_KEY` is configured. Only set `ALLOW_PUBLIC_UPLOADS=true` when you intentionally permit public usage and have enforced quotas/rate limits at your deployment edge; it may create storage bills. Setting a shared server `ARK_API_KEY` also exposes that account's paid model usage to anyone with workspace access. Avoid deploying a publicly funded instance without external authentication and cost controls.
+
+The browser stores a verified BYOK API key in tab-scoped session storage, sends it to the JUJITSU backend over HTTPS, and the backend forwards it to BytePlus. Only enter keys on instances you trust. Job history is browser-local rather than a server account system.
+
+## What it is — and isn't
+
+JUJITSU is a real user interface for the Seedance 2.5 video-edit endpoint (`dreamina-seedance-2-5-260628`). It does not train or host its own AI model; model behavior and availability depend on BytePlus. It does not provide free model inference or retrieve your BytePlus account balance. Cost figures are estimates, not billing guarantees. Character consistency and footage preservation depend on the model and input materials.
+
+Only upload videos and likenesses you have permission to use. Respect copyright, privacy, and applicable consent requirements.
+
+## Development
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+## License
+
+MIT © 2026 [pedroshakoor](https://github.com/Pedroshakoor). See [LICENSE](LICENSE).
