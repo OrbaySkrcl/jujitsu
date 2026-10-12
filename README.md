@@ -1,43 +1,39 @@
-# Jujistsu Motion Studio
+# Jujistsu
 
-A production-ready motion-transfer and object-replacement workflow powered by the official BytePlus ModelArk Seedance 2.5 API.
+A single-page character-replacement workflow using the official BytePlus ModelArk Seedance 2.5 video-edit API.
 
-## Features
+## Real workflow
 
-- Motion Transfer and Object Swap workflows
-- Direct browser uploads to Railway Object Storage
-- Up to 30 reference images and 4 batch variations
-- Style, prompt, and 480p/720p/1080p controls
-- Asynchronous task polling, history, result comparison, and downloads
-- Responsive dark interface based on the MIT-licensed Next Shadcn Dashboard Starter
+- Direct MP4/MOV and reference-image uploads to S3-compatible storage
+- Official `dreamina-seedance-2-5-260628` edit task creation and polling
+- 480p, 720p, 1080p and 1–4 independent outputs
+- Browser-local history with real task IDs, output URLs, tokens, and list-rate estimates
+- Optional workspace access key protecting paid API usage
 
-## Configuration
+There are no example jobs, fake balance, preset library, object swap, or simulated outputs. ModelArk does not expose account balance through the generation API.
 
-Copy `env.example.txt` to `.env.local`, then configure:
+## Configure
+
+Copy `env.example.txt` to `.env.local`:
 
 ```env
-ARK_API_KEY=
+ARK_API_KEY=your_byteplus_modelark_api_key
+APP_ACCESS_KEY=choose_a_shared_workspace_password
 AWS_ENDPOINT_URL=
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_S3_BUCKET_NAME=
 AWS_DEFAULT_REGION=
+AWS_S3_URL_STYLE=
 ```
 
-The Seedance model and API endpoint already default to the official ModelArk values and can be overridden with `SEEDANCE_MODEL` and `SEEDANCE_API_BASE_URL`.
+`ARK_API_KEY` stays server-side. Set `APP_ACCESS_KEY` on public deployments so strangers cannot spend your API or storage balance. Configure bucket CORS to allow `PUT` from the deployed origin with `Content-Type`.
 
-## Development
+## Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Production
-
-```bash
-npm run build
-npm start
-```
-
-The included Dockerfile produces a standalone Next.js server suitable for Railway.
+The Dockerfile uses Next.js standalone output and is ready for Railway.

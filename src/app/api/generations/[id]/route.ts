@@ -1,8 +1,10 @@
 import { getSeedanceTask, normalizeSeedanceTask } from '@/lib/seedance';
 import { NextResponse } from 'next/server';
+import { hasAccess } from '@/lib/access';
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    if (!hasAccess(request)) return NextResponse.json({ error: 'Invalid access key' }, { status: 401 });
     const { id } = await params;
     return NextResponse.json(normalizeSeedanceTask(await getSeedanceTask(id)));
   } catch (error) {

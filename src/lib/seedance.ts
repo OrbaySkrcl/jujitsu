@@ -6,7 +6,6 @@ export const SEEDANCE_MODEL = process.env.SEEDANCE_MODEL ?? 'dreamina-seedance-2
 
 export interface GenerationInput {
   prompt?: string;
-  style?: string;
   resolution: '480p' | '720p' | '1080p';
   videoUrl: string;
   imageUrls: string[];
@@ -19,10 +18,10 @@ function requiredApiKey() {
 }
 
 function buildPrompt(input: GenerationInput) {
-  const imageRefs = input.imageUrls.map((_, index) => `@Image${index + 1}`).join(', ');
-  const instruction = `Replace the main subject in @Video1 with the character defined by ${imageRefs}. Preserve the source motion, pose, facial timing, camera movement, framing, scene timing, and audio.`;
+  const imageRefs = input.imageUrls.map((_, index) => `@Image ${index + 1}`).join(', ');
+  const instruction = `This is a video editing task. @Video 1 is the master clip; preserve its camera movement, pacing, duration, composition, shot order, cuts, expressions, actions, poses, timing, lighting, background, and original audio. ${imageRefs} define the same replacement character's face, hairstyle, body shape, clothing, and accessories; do not use the image backgrounds. Replace the main character in @Video 1 with the character defined by ${imageRefs}. The replacement inherits the original character's on-screen timing, position, pose, full motion path, hand motion, facial timing, occlusions, entrances, and exits. Keep every other subject and element unchanged. Do not change framing or add or remove anything else.`;
 
-  return [instruction, input.style ? `Visual treatment: ${input.style}.` : '', input.prompt ?? '']
+  return [instruction, input.prompt ?? '']
     .filter(Boolean)
     .join(' ');
 }
@@ -71,20 +70,22 @@ export async function getSeedanceTask(id: string) {
   return data;
 }
 
-export function normalizeSeedanceTask(data: Record<string, any>) {
-  const status = String(data.status ?? data.data?.status ?? 'queued').toLowerCase();
-  const id = String(data.id ?? data.data?.id ?? data.task_id ?? data.data?.task_id ?? '');
+export function normalizeSeedanceTask(data: Record<string, unknown>) {
+  const nested = typeof data.data === 'object' && data.data ? data.data as Record<string, unknown> : {};
+  const content = typeof data.content === 'object' && data.content ? data.content as Record<string, unknown> : {};
+  const nestedContent = typeof nested.content === 'object' && nested.content ? nested.content as Record<string, unknown> : {};
+  const usage = typeof data.usage === 'object' && data.usage ? data.usage as Record<string, unknown> : {};
+  const nestedUsage = typeof nested.usage === 'object' && nested.usage ? nested.usage as Record<string, unknown> : {};
+  const failure = typeof data.error === 'object' && data.error ? data.error as Record<string, unknown> : {};
+  const status = String(data.status ?? nested.status ?? 'queued').toLowerCase();
+  const id = String(data.id ?? nested.id ?? data.task_id ?? nested.task_id ?? '');
   const videoUrl =
-    data.content?.video_url ??
-    data.data?.content?.video_url ??
-    data.result?.video_url ??
-    data.data?.result?.video_url ??
-    data.output?.video_url ??
+    content.video_url ?? nestedContent.video_url ??
     null;
-  const error = data.error?.message ?? data.data?.error?.message ?? null;
+  const error = failure.message ?? data.message ?? null;
   const completionTokens =
-    Number(data.usage?.completion_tokens ?? data.data?.usage?.completion_tokens) || null;
-  const resolution = String(data.resolution ?? data.data?.resolution ?? '');
+    Number(usage.completion_tokens ?? nestedUsage.completion_tokens) || null;
+  const resolution = String(data.resolution ?? nested.resolution ?? '');
   const costUsd = completionTokens
     ? (completionTokens / 1_000_000) * (resolution === '1080p' ? 7 : 6.4)
     : null;

@@ -21,10 +21,10 @@ function client() {
 
 const bucket = () => env('AWS_S3_BUCKET_NAME');
 
-export async function createUploadUrl(key: string, contentType: string) {
+export async function createUploadUrl(key: string, contentType: string, size: number) {
   return getSignedUrl(
     client(),
-    new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: contentType }),
+    new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: contentType, ContentLength: size }),
     { expiresIn: 900 }
   );
 }

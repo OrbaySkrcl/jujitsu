@@ -1,27 +1,9 @@
-'use client';
-
-import { useRouter } from 'next/navigation';
-
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function NotFound() {
-  const router = useRouter();
-
   return (
-    <div className='absolute top-1/2 left-1/2 mb-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-center'>
-      <span className='from-foreground bg-linear-to-b to-transparent bg-clip-text text-[10rem] leading-none font-extrabold text-transparent'>
-        404
-      </span>
-      <h2 className='font-heading my-2 text-2xl font-bold'>Something&apos;s missing</h2>
-      <p>Sorry, the page you are looking for doesn&apos;t exist or has been moved.</p>
-      <div className='mt-8 flex justify-center gap-2'>
-        <Button onClick={() => router.back()} variant='default' size='lg'>
-          Go back
-        </Button>
-        <Button onClick={() => router.push('/dashboard')} variant='ghost' size='lg'>
-          Back to Home
-        </Button>
-      </div>
-    </div>
+    <main className='grid min-h-screen place-items-center bg-background p-6 text-center'>
+      <div><p className='font-mono text-xs text-muted-foreground'>404</p><h1 className='mt-3 font-display text-5xl'>Page not found.</h1><Link href='/' className='mt-8 inline-block border border-border bg-secondary px-4 py-2 text-sm'>Return to Jujistsu</Link></div>
+    </main>
   );
 }

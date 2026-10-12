@@ -45,6 +45,7 @@ next-env.d.ts
 # cursor 
 .cursorrules
 /memory-bank
+/new theme/
 
 # Sentry Config File
 .env.sentry-build-plugin

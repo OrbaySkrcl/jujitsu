@@ -1,4 +1,5 @@
 import { createUploadUrl } from '@/lib/storage';
+import { hasAccess } from '@/lib/access';
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
@@ -16,9 +17,13 @@ const IMAGE_TYPES = new Set([
 
 export async function POST(request: Request) {
   try {
-    const { filename, contentType, kind } = await request.json();
+    if (!hasAccess(request)) return NextResponse.json({ error: 'Invalid access key' }, { status: 401 });
+    const { filename, contentType, kind, size } = await request.json();
+    if (kind !== 'video' && kind !== 'image')
+      return NextResponse.json({ error: 'Invalid upload kind' }, { status: 400 });
     const allowed = kind === 'video' ? VIDEO_TYPES : IMAGE_TYPES;
-    if (!filename || !allowed.has(contentType)) {
+    const maxSize = kind === 'video' ? 200 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (!filename || !allowed.has(contentType) || !Number.isFinite(size) || size < 1 || size > maxSize) {
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
     }
     const extension =
@@ -30,7 +35,7 @@ export async function POST(request: Request) {
     const objectKey = `inputs/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${extension}`;
     return NextResponse.json({
       objectKey,
-      uploadUrl: await createUploadUrl(objectKey, contentType)
+      uploadUrl: await createUploadUrl(objectKey, contentType, size)
     });
   } catch (error) {
     return NextResponse.json(
