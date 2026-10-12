@@ -1,5 +1,6 @@
 import { createUploadUrl } from '@/lib/storage';
 import { hasAccess } from '@/lib/access';
+import { takeQuota } from '@/lib/limits';
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
   try {
     if (!process.env.APP_ACCESS_KEY && process.env.ALLOW_PUBLIC_UPLOADS !== 'true') return NextResponse.json({ error: 'Uploads require a configured workspace access key' }, { status: 503 });
     if (!hasAccess(request)) return NextResponse.json({ error: 'Invalid access key' }, { status: 401 });
+    if (!takeQuota(request, 'upload', 30)) return NextResponse.json({ error: 'Hourly upload quota exceeded' }, { status: 429 });
     const { filename, contentType, kind, size } = await request.json();
     if (kind !== 'video' && kind !== 'image')
       return NextResponse.json({ error: 'Invalid upload kind' }, { status: 400 });
