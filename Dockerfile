@@ -15,7 +15,7 @@ RUN npm install -g bun
 COPY package.json bun.lock* ./
 
 # Install dependencies with frozen lockfile for reproducible builds
-RUN --mount=type=cache,target=/root/.bun/install/cache \
+RUN --mount=type=cache,id=bun-install,target=/root/.bun/install/cache \
     bun install --no-save --frozen-lockfile
 
 # ============================================
