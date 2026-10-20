@@ -13,7 +13,7 @@ The user doesn't code. They only want to open a link, pick their character image
 - [x] Verify: deployment SUCCESS. Railway edge logs show external `GET /api/config` → 200 and `GET /` → 200. The pre-deploy log shows `PutBucketCors` succeeded on the real bucket. Not verifiable from this sandbox: a live browser upload, because the proxy blocks `*.up.railway.app` and `*.storageapi.dev`.
 - [x] Review the end-to-end path and research BytePlus setup steps (multi-agent workflow, 8 agents)
 - [x] Apply cheap hardening from the review
-- [ ] Hand over: link, password, and BytePlus key steps in plain Turkish
+- [x] Hand over: link, password, and BytePlus key steps in plain Turkish (password shared in chat only, never committed)
 
 ## Review / Results (Task 2)
 - Live at `https://studio-production-9656.up.railway.app`, protected by `APP_ACCESS_KEY`. Users bring their own BytePlus key (BYOK). No server `ARK_API_KEY`, so nobody else can spend the user's money.
