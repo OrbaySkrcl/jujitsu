@@ -1,4 +1,22 @@
-# Task: Fork security audit + run without local install
+# Task 2: Ready-to-use hosted studio for a non-coder
+
+## Understanding
+The user doesn't code. They only want to open a link, pick their character image and a video, and get the swapped video.
+
+## Plan
+- [x] Create Railway project `jujitsu` in the user's personal workspace
+- [x] Create a Railway storage bucket `uploads` (S3-compatible, needed for video/image uploads)
+- [x] Create the app service with bucket credentials as variable references, a strong `APP_ACCESS_KEY` and virtual-hosted URL style
+- [x] Deploy from `OrbaySkrcl/jujitsu` branch `claude/fervent-dirac-8yxj8l` (Dockerfile build)
+- [x] Generate a public `*.up.railway.app` domain
+- [x] Configure bucket CORS so the browser can upload (PUT) from that domain only. Railway redacts bucket secrets from the API, so a pre-deploy script (`scripts/configure-bucket-cors.mjs`) does this with the service's own credentials.
+- [ ] Verify: deployment SUCCESS, `/api/config` says access required, presign works with key and fails without, browser-style CORS upload succeeds
+- [ ] Review the end-to-end path and research BytePlus setup steps (multi-agent workflow)
+- [ ] Hand over: link, password, and BytePlus key steps in plain Turkish
+
+---
+
+# Task 1: Fork security audit + run without local install
 
 ## Understanding
 1. Is this forked repo (upstream: Pedroshakoor/jujistsu, author "Pedro" / labofeight-ops) safe?
