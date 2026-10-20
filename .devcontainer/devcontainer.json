@@ -1,0 +1,21 @@
+{
+  "name": "JUJITSU",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "containerEnv": {
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  "postCreateCommand": "npm ci --ignore-scripts && (test -f .env.local || cp env.example.txt .env.local)",
+  "postAttachCommand": "npm run dev",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "JUJITSU",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["README.md"]
+    }
+  }
+}

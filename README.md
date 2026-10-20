@@ -30,6 +30,18 @@ npm run dev
 
 Set your S3 bucket connection variables in `.env.local` and configure bucket CORS for `PUT` from your deployed site origin with the `Content-Type` header. Open http://localhost:3000. Enter your BytePlus ModelArk API key in the studio and use **Save & verify**.
 
+### Run in GitHub Codespaces (no local install)
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/OrbaySkrcl/jujitsu)
+
+Everything runs in a cloud container in your browser; nothing is installed on your computer.
+
+1. Click the badge above (or **Code → Codespaces → Create codespace** on GitHub).
+2. Add your secrets under GitHub **Settings → Codespaces → Secrets** for this repository: `APP_ACCESS_KEY`, the `AWS_*` storage variables, and optionally `ARK_API_KEY`. You can edit `.env.local` in the codespace instead, but secrets survive rebuilds and are never committed.
+3. Wait for setup to finish. The dev server starts automatically and port 3000 opens in a new tab.
+
+Keep the forwarded port **Private** (the default) so only your GitHub account can reach it. Stop the codespace when you are done; the free monthly quota is counted while it runs.
+
 For private workspaces, set `APP_ACCESS_KEY` to a strong password. Uploaded footage and reference images are stored in the configured bucket, and presigned URLs temporarily grant access to those objects. Apply bucket lifecycle policies to delete old inputs.
 
 **Security and cost warning:** By default, anonymous upload signing is disabled unless `APP_ACCESS_KEY` is configured. Only set `ALLOW_PUBLIC_UPLOADS=true` when you intentionally permit public usage and have enforced quotas/rate limits at your deployment edge; it may create storage bills. Setting a shared server `ARK_API_KEY` also exposes that account's paid model usage to anyone with workspace access. Avoid deploying a publicly funded instance without external authentication and cost controls.
