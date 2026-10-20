@@ -29,8 +29,9 @@ export async function createUploadUrl(key: string, contentType: string, size: nu
   );
 }
 
+// Seedance may fetch inputs when a queued task starts, which can be well after creation.
 export async function createReadUrl(key: string) {
   return getSignedUrl(client(), new GetObjectCommand({ Bucket: bucket(), Key: key }), {
-    expiresIn: 3600
+    expiresIn: 86400
   });
 }

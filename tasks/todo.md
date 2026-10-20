@@ -10,9 +10,26 @@ The user doesn't code. They only want to open a link, pick their character image
 - [x] Deploy from `OrbaySkrcl/jujitsu` branch `claude/fervent-dirac-8yxj8l` (Dockerfile build)
 - [x] Generate a public `*.up.railway.app` domain
 - [x] Configure bucket CORS so the browser can upload (PUT) from that domain only. Railway redacts bucket secrets from the API, so a pre-deploy script (`scripts/configure-bucket-cors.mjs`) does this with the service's own credentials.
-- [ ] Verify: deployment SUCCESS, `/api/config` says access required, presign works with key and fails without, browser-style CORS upload succeeds
-- [ ] Review the end-to-end path and research BytePlus setup steps (multi-agent workflow)
+- [x] Verify: deployment SUCCESS. Railway edge logs show external `GET /api/config` → 200 and `GET /` → 200. The pre-deploy log shows `PutBucketCors` succeeded on the real bucket. Not verifiable from this sandbox: a live browser upload, because the proxy blocks `*.up.railway.app` and `*.storageapi.dev`.
+- [x] Review the end-to-end path and research BytePlus setup steps (multi-agent workflow, 8 agents)
+- [x] Apply cheap hardening from the review
 - [ ] Hand over: link, password, and BytePlus key steps in plain Turkish
+
+## Review / Results (Task 2)
+- Live at `https://studio-production-9656.up.railway.app`, protected by `APP_ACCESS_KEY`. Users bring their own BytePlus key (BYOK). No server `ARK_API_KEY`, so nobody else can spend the user's money.
+- The code-path review confirmed these with local runs and a mock Ark server:
+  - Signed headers are only `content-length;host`, and the CORS rule covers the preflight.
+  - Gating works, and the generation request body matches the Seedance 2.5 edit spec.
+  - Polling works with the user's own key.
+- Hardening applied after the review:
+  - Set `AWS_REQUEST_CHECKSUM_CALCULATION` and `AWS_RESPONSE_CHECKSUM_VALIDATION` to `WHEN_REQUIRED` (Railway variables). This drops `x-amz-checksum-crc32=AAAAAA==` (the CRC32 of an empty body) from presigned PUT URLs. Tigris doesn't enforce it today, but it's a latent break, and I verified locally that the params disappear.
+  - Raised the upload quota from 30 to 200/hour. It's keyed on the shared access key, and one max-reference job alone needs 31 presigns.
+  - Raised the presigned read URLs handed to Seedance from 1 h to 24 h, because queued tasks can start later.
+- **Provider limitation (not fixable in code):** Seedance 2.0/2.5 rejects inputs with real human faces (`InputImageSensitiveContentDetected.PrivacyInformation`) unless the person is enrolled in BytePlus's invite-only real-human asset library. Illustrated, 3D or anime characters work.
+- Known low-severity UX issues, left as is:
+  - Re-selecting the same file after removing it does nothing. Reloading the page fixes it.
+  - Uploading before entering the access key fails with "Invalid access key".
+  - Batches of 2–4 outputs lose tasks if one of them fails partway, so keep Outputs at 1.
 
 ---
 
