@@ -50,6 +50,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Copy public assets
 COPY --from=builder --chown=node:node /app/public ./public
 
+# Deploy-time helpers (bucket CORS setup)
+COPY --from=builder --chown=node:node /app/scripts ./scripts
+
 # Create .next dir with correct permissions for prerender cache
 RUN mkdir .next && chown node:node .next
 
